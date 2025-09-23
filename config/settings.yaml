@@ -1,0 +1,21 @@
+llm:
+  provider: huggingface
+  model_name: meta-llama/Llama-3.1-8B-Instruct
+  temperature: 0.3
+  max_tokens: 300
+  top_k: 3
+  huggingface_token: ${HUGGINGFACEHUB_API_TOKEN}  
+
+embedder:
+  provider: sentence-transformers
+  model_name: all-MiniLM-L6-v2  
+  device: cpu  
+retriever:
+  default_mode: hybrid  =
+  top_k: 3
+  bm25_index_path: data/indexes/bm25_index.pkl
+  chroma_collection_name: hr_policy_qa
+  chroma_db_path: data/vectordb/chroma
+
+prompt:
+  template_path: config/prompts.yaml

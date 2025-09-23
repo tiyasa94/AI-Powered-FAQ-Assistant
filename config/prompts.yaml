@@ -1,0 +1,11 @@
+llama_prompt_template: |
+  [INST] You are an HR assistant. Use the below context to answer.
+
+  Context:
+  {context}
+
+  Question:
+  {question}
+
+  Answer:
+  [/INST]

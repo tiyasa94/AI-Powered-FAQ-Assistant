@@ -1,0 +1,4 @@
+pandas
+sentence_transformers
+chromadb
+rank_bm25

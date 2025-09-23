@@ -21,11 +21,11 @@ def main():
     parser.add_argument("--mode", choices=["semantic", "bm25", "hybrid"], default=None, help="Retrieval method to use")
     args = parser.parse_args()
 
-    query = input("Enter your HR-related question: ").strip()
-    print("\n--- Generating Answer ---\n")
+    query = input("Ask your question: ").strip()
+    # print("\n--- Generating Answer ---\n")
     response = generate_answer(query, retrieval_mode=args.mode)
     print(response)
-    print("\n-------------------------\n")
+    # print("\n-------------------------\n")
 
 if __name__ == "__main__":
     main()

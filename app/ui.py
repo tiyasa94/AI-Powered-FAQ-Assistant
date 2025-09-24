@@ -1,117 +1,67 @@
 # app/ui.py
 import os
-import base64
 import requests
 import streamlit as st
-from streamlit_float import float_init
 
-st.set_page_config(page_title="AI-Powered FAQ Assistant", page_icon="💬", layout="wide")
+st.set_page_config(page_title="AI-Powered FAQ Assistant", page_icon="💬")
 
 API_URL = os.getenv("FAQ_API_URL", "http://127.0.0.1:8000")
 ASK_URL = f"{API_URL.rstrip('/')}/ask"
 
-# --- background image helper ---
-def set_page_background(image_path: str, mime: str = "jpg"):
-    if not os.path.exists(image_path):
-        st.warning(f"Background image not found: {image_path}")
-        return
-    with open(image_path, "rb") as f:
-        b64 = base64.b64encode(f.read()).decode()
+# ---- Sidebar controls (keep it simple) ----
+with st.sidebar:
+    st.header("AI-Powered FAQ Assistant")
+    st.caption("Ask questions about policies, leave, payroll, and more. The assistant uses your FAQ KB.")
+    clear = st.button("Clear chat")
+    # st.divider()
+    # st.caption("Backend:")
+    # st.code(ASK_URL, language="text")
 
-    st.markdown(
-        f"""
-        <style>
-          /* Full-page background */
-          .stApp {{
-            background: url("data:image/{mime};base64,{b64}") no-repeat center center fixed;
-            background-size: cover;
-          }}
-          /* Make foreground containers transparent so the bg shows through */
-          .stMain, .block-container {{
-            background: transparent !important;
-          }}
-          header, footer {{
-            background: transparent !important;
-          }}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+if "messages" not in st.session_state or clear:
+    st.session_state.messages = [
+        {"role": "assistant", "content": "Hi! How can I help you today?"}
+    ]
 
-set_page_background("app/assets/hero_bg.png", mime="png")
+st.title("MyBuddy")
+# st.caption("Simple HR FAQ chatbot (Streamlit demo)")
 
-# --- init floating support ---
-float_init()
+# ---- Render history ----
+for m in st.session_state.messages:
+    with st.chat_message(m["role"]):
+        st.write(m["content"])
 
-# === Floating Chat Box (bottom-right) ===
-chat_box = st.container()
-
-# 1) Float FIRST to minimize jump/flicker
-chat_box.float(
-    css="""
-    position: fixed;
-    bottom: 24px;
-    right: 24px;
-    width: 380px;
-    max-height: 75vh;
-    padding: 16px;
-    border-radius: 12px;
-    background: rgba(255,255,255,0.92);
-    backdrop-filter: blur(6px);
-    box-shadow: 0 12px 32px rgba(0,0,0,0.18);
-    overflow: auto;
+# ---- Ask backend helper ----
+def ask_backend(question: str) -> tuple[str, list[dict]]:
     """
-)
+    Calls FastAPI /ask endpoint and returns (answer, contexts).
+    Expects JSON: {"answer": "...", "contexts": [{"question": "...", "answer": "..."}]}
+    """
+    try:
+        r = requests.post(ASK_URL, json={"question": question}, timeout=60)
+        r.raise_for_status()
+        data = r.json()
+        return data.get("answer", ""), data.get("contexts", [])
+    except Exception as e:
+        return f"Request failed: {e}", []
 
-# 2) Then render content inside the floated container
-with chat_box:
-    st.subheader("Assistant")
+# ---- Chat input -> backend ----
+prompt = st.chat_input("Type your question…")
+if prompt:
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.write(prompt)
 
-    if "messages" not in st.session_state:
-        st.session_state.messages = [
-            {"role": "assistant", "content": "What's on your mind?"}
-        ]
+    with st.chat_message("assistant"):
+        status = st.status("Thinking…", expanded=False)
+        answer, contexts = ask_backend(prompt)
+        status.update(label="Done", state="complete", expanded=False)
+        st.write(answer)
 
-    # render history
-    for m in st.session_state.messages:
-        with st.chat_message(m["role"]):
-            st.write(m["content"])
-
-    # status placeholder shown while we wait for the backend
-    status = st.empty()
-
-    # input -> backend /ask
-    user_text = st.chat_input("Type your question…")
-    if user_text:
-        st.session_state.messages.append({"role": "user", "content": user_text})
-        with st.chat_message("user"):
-            st.write(user_text)
-
-        # 3) Show in-chat status while generating
-        status.markdown("**Getting answer…**")
-
-        answer, contexts = "", []
-        try:
-            r = requests.post(ASK_URL, json={"question": user_text})
-            if r.status_code == 200:
-                data = r.json()
-                answer = data.get("answer", "")
-                contexts = data.get("contexts", [])
-            else:
-                answer = f"Server error {r.status_code}: {r.text}"
-        except Exception as e:
-            answer = f"Request failed: {e}"
-
-        # clear the status line once we have a result
-        status.empty()
-
-        st.session_state.messages.append({"role": "assistant", "content": answer})
-        with st.chat_message("assistant"):
-            st.write(answer)
-
-        # # optional: show retrieved snippets
+        # Optional: show retrieved snippets like the blog demo does
         # if contexts:
         #     with st.expander("Retrieved FAQs"):
         #         for i, c in enumerate(contexts, 1):
         #             st.markdown(f"**{i}. {c.get('question','')}**")
         #             st.write(c.get("answer", ""))
+
+    st.session_state.messages.append({"role": "assistant", "content": answer})

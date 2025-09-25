@@ -21,6 +21,7 @@ This project uses **Retrieval-Augmented Generation (RAG)** with:
 ---
 
 ## **Folder Structure**
+```bash
 AI-POWERED-FAQ-ASSISTANT/
 │
 ├── app/
@@ -48,7 +49,7 @@ AI-POWERED-FAQ-ASSISTANT/
 ├── requirements.txt
 ├── README.md
 └── .env
-
+```
 
 
 ---

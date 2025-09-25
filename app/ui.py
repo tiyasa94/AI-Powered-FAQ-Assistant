@@ -1,67 +1,119 @@
 # app/ui.py
 import os
+import uuid
+import json
 import requests
 import streamlit as st
 
-st.set_page_config(page_title="AI-Powered FAQ Assistant", page_icon="💬")
+st.set_page_config(page_title="AskFAQ", page_icon="🤖", layout="wide")
 
+# ---------- Cleaning helper ----------
+def clean_answer(raw_text: str) -> str:
+    """
+    Clean up the model response to remove any unwanted prefixes like Q:/A: or context echoes.
+    """
+    text = (raw_text or "").strip()
+
+    if text[:2].upper() == "Q:" and "A:" in text:
+        text = text.rsplit("A:", 1)[-1].strip()
+
+    for marker in ["Context:", "CONTEXT:", "\nUser:", "\nAssistant:", "\nUSER:", "\nASSISTANT:"]:
+        if marker in text:
+            text = text.split(marker)[0].strip()
+
+    if text[:2].upper() == "A:":
+        text = text[2:].strip()
+
+    return " ".join(text.split())
+
+# -------------------
+# Backend API config
+# -------------------
 API_URL = os.getenv("FAQ_API_URL", "http://127.0.0.1:8000")
-ASK_URL = f"{API_URL.rstrip('/')}/ask"
+ASK_STREAM_URL = f"{API_URL.rstrip('/')}/ask/stream"
 
-# ---- Sidebar controls (keep it simple) ----
-with st.sidebar:
-    st.header("AI-Powered FAQ Assistant")
-    st.caption("Ask questions about policies, leave, payroll, and more. The assistant uses your FAQ KB.")
-    clear = st.button("Clear chat")
-    # st.divider()
-    # st.caption("Backend:")
-    # st.code(ASK_URL, language="text")
+# -------------------
+# Session management
+# -------------------
+if "session_id" not in st.session_state:
+    st.session_state.session_id = str(uuid.uuid4())
 
-if "messages" not in st.session_state or clear:
+if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": "Hi! How can I help you today?"}
     ]
 
-st.title("MyBuddy")
-# st.caption("Simple HR FAQ chatbot (Streamlit demo)")
+# -------------------
+# Sidebar
+# -------------------
+st.sidebar.title("AI-Powered FAQ Assistant")
+st.sidebar.write(
+    "Ask questions about policies, leave, payroll, and more. "
+    "The assistant uses your FAQ KB."
+)
 
-# ---- Render history ----
-for m in st.session_state.messages:
-    with st.chat_message(m["role"]):
-        st.write(m["content"])
+if st.sidebar.button("Clear chat"):
+    st.session_state.messages = [
+        {"role": "assistant", "content": "Hi! How can I help you today?"}
+    ]
+    st.session_state.session_id = str(uuid.uuid4())
 
-# ---- Ask backend helper ----
-def ask_backend(question: str) -> tuple[str, list[dict]]:
-    """
-    Calls FastAPI /ask endpoint and returns (answer, contexts).
-    Expects JSON: {"answer": "...", "contexts": [{"question": "...", "answer": "..."}]}
-    """
-    try:
-        r = requests.post(ASK_URL, json={"question": question}, timeout=60)
-        r.raise_for_status()
-        data = r.json()
-        return data.get("answer", ""), data.get("contexts", [])
-    except Exception as e:
-        return f"Request failed: {e}", []
+# -------------------
+# Main Chat Window
+# -------------------
+st.title("AskFAQ")
 
-# ---- Chat input -> backend ----
-prompt = st.chat_input("Type your question…")
-if prompt:
-    st.session_state.messages.append({"role": "user", "content": prompt})
+# Render previous chat
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.write(msg["content"])
+
+# Input box
+user_text = st.chat_input("Type your question…")
+
+if user_text:
+    # Add user's message
+    st.session_state.messages.append({"role": "user", "content": user_text})
     with st.chat_message("user"):
-        st.write(prompt)
+        st.write(user_text)
 
+    # Streaming assistant response
     with st.chat_message("assistant"):
-        status = st.status("Thinking…", expanded=False)
-        answer, contexts = ask_backend(prompt)
-        status.update(label="Done", state="complete", expanded=False)
-        st.write(answer)
+        response_box = st.empty()
+        full_answer = ""
 
-        # Optional: show retrieved snippets like the blog demo does
-        # if contexts:
-        #     with st.expander("Retrieved FAQs"):
-        #         for i, c in enumerate(contexts, 1):
-        #             st.markdown(f"**{i}. {c.get('question','')}**")
-        #             st.write(c.get("answer", ""))
+        try:
+            with requests.post(
+                ASK_STREAM_URL,
+                json={
+                    "question": user_text,
+                    "session_id": st.session_state.session_id,
+                },
+                stream=True,
+                timeout=120,
+            ) as r:
+                if r.status_code == 200:
+                    for line in r.iter_lines(decode_unicode=True):
+                        if not line:
+                            continue
+                        try:
+                            data = json.loads(line)
+                        except Exception:
+                            continue
 
-    st.session_state.messages.append({"role": "assistant", "content": answer})
+                        if "token" in data:
+                            full_answer += data["token"] + " "
+                            response_box.markdown(full_answer)
+                        elif "final" in data:
+                            full_answer = data["final"]
+                            response_box.markdown(full_answer)
+                else:
+                    full_answer = f"Server error {r.status_code}: {r.text}"
+                    response_box.error(full_answer)
+        except Exception as e:
+            full_answer = f"Request failed: {e}"
+            response_box.error(full_answer)
+
+    # Clean the final answer and **only save to history**, no second rendering
+    cleaned = clean_answer(full_answer)
+    st.session_state.messages.append({"role": "assistant", "content": cleaned})

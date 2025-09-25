@@ -43,7 +43,7 @@ generator = pipeline(
 
 # -------------------- Prompt Template --------------------
 with open(prompt_cfg["template_path"], "r") as f:
-    prompt_template = yaml.safe_load(f)["llama_prompt_template"]
+    prompt_template = yaml.safe_load(f)["mistral_prompt_template"]
 
 # -------------------- BM25 Index --------------------
 with open(retriever_cfg["bm25_index_path"], "rb") as f:

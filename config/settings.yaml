@@ -11,7 +11,7 @@ embedder:
   model_name: all-MiniLM-L6-v2  
   device: cpu  
 retriever:
-  default_mode: hybrid  =
+  default_mode: hybrid
   top_k: 3
   bm25_index_path: data/indexes/bm25_index.pkl
   chroma_collection_name: hr_policy_qa

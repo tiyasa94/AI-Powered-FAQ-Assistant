@@ -12,7 +12,7 @@ mistral_prompt_template: |
   - If the context does NOT have enough information, politely respond with:
     > "I'm sorry, but I don't have enough information to answer that question right now. Please check with HR or refer to the employee handbook."
   - Avoid hallucinations: do not add extra policies or assumptions beyond what is provided.
-  - Write in a professional yet friendly tone and use bullet pointers wherever there are multiple points included in your answer.
+  - Write in a professional yet friendly tone.
   - Keep the answer under 4-5 sentences, unless explicitly required.
 
   * Context (Knowledge Base):

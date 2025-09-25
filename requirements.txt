@@ -7,3 +7,6 @@ fastapi
 streamlit
 requests
 streamlit-float
+transformers
+python-dotenv
+uvicorn

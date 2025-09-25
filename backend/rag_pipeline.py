@@ -1,10 +1,17 @@
-# backend/rag_pipeline.py
-
 """
-Pipeline to:
-1. Retrieve similar FAQ answers using semantic, keyword, or hybrid retrieval
-2. (Optional) Rerank results using query-based similarity scoring
-3. Generate final answer using HuggingFace-hosted LLM
+rag_pipeline.py
+
+This module implements the Retrieval-Augmented Generation (RAG) pipeline.
+It performs the following steps:
+1. Retrieve similar FAQ answers using either:
+   - Semantic search (embedding-based with ChromaDB),
+   - Keyword search (BM25),
+   - Or a hybrid of both.
+2. (Optional) Rerank the retrieved results using query-based similarity scoring.
+3. Generate the final answer using a Hugging Face-hosted LLM, with the
+   retrieved FAQs provided as context.
+
+This pipeline acts as the core logic for the backend API.
 """
 
 import os
@@ -18,6 +25,7 @@ from sentence_transformers import SentenceTransformer
 from rank_bm25 import BM25Okapi
 from dotenv import load_dotenv
 
+# Load environment variables (e.g., Hugging Face API token)
 load_dotenv()
 
 # -------------------- Load Config --------------------
@@ -30,9 +38,11 @@ prompt_cfg = config["prompt"]
 embedder_cfg = config["embedder"]
 
 # -------------------- Embedding Model --------------------
+# Used for semantic search retrieval
 embed_model = SentenceTransformer(embedder_cfg["model_name"])
 
-# -------------------- HuggingFace LLM --------------------
+# -------------------- Hugging Face LLM --------------------
+# Initialize text generation pipeline with Hugging Face model
 hf_token = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 generator = pipeline(
     "text-generation",
@@ -42,16 +52,19 @@ generator = pipeline(
 )
 
 # -------------------- Prompt Template --------------------
+# Loads prompt template for structuring context and question for the LLM
 with open(prompt_cfg["template_path"], "r") as f:
     prompt_template = yaml.safe_load(f)["mistral_prompt_template"]
 
 # -------------------- BM25 Index --------------------
+# Load BM25 index for keyword-based retrieval
 with open(retriever_cfg["bm25_index_path"], "rb") as f:
     bm25_data = pickle.load(f)
     bm25 = bm25_data["bm25"]
-    bm25_corpus = bm25_data["corpus"]  # List[Dict[str, str]]
+    bm25_corpus = bm25_data["corpus"]  # List of dictionaries with Question and Answer
 
 # -------------------- ChromaDB Setup --------------------
+# Persistent vector database for semantic search
 chroma_client = PersistentClient(path=retriever_cfg["chroma_db_path"])
 collection = chroma_client.get_or_create_collection(name=retriever_cfg["chroma_collection_name"])
 
@@ -60,38 +73,72 @@ collection = chroma_client.get_or_create_collection(name=retriever_cfg["chroma_c
 # =====================================================
 
 def retrieve_semantic(query: str, top_k: int) -> List[Dict]:
+    """
+    Retrieve top-k most relevant FAQs using semantic similarity (embeddings).
+
+    Args:
+        query (str): User question.
+        top_k (int): Number of results to retrieve.
+
+    Returns:
+        List[Dict]: List of retrieved FAQs with question, answer, and similarity score.
+    """
     embedded_query = embed_model.encode(query).tolist()
     results = collection.query(query_embeddings=[embedded_query], n_results=top_k)
     return [
         {
             "question": meta["Question"],
             "answer": doc,
-            "category": meta["Category"],
             "score": dist
         }
         for doc, meta, dist in zip(results["documents"][0], results["metadatas"][0], results["distances"][0])
     ]
 
+
 def retrieve_bm25(query: str, top_k: int) -> List[Dict]:
+    """
+    Retrieve top-k most relevant FAQs using keyword-based BM25 retrieval.
+
+    Args:
+        query (str): User question.
+        top_k (int): Number of results to retrieve.
+
+    Returns:
+        List[Dict]: List of retrieved FAQs with question, answer, and relevance score.
+    """
     scores = bm25.get_scores(query.split())
     top_n = np.argsort(scores)[::-1][:top_k]
     return [
-    {
-        "question": bm25_corpus[i].get("Question", ""),
-        "answer": bm25_corpus[i].get("Answer", ""),
-        "category": bm25_corpus[i].get("Category", ""),
-        "score": scores[i]
-    }
-
+        {
+            "question": bm25_corpus[i].get("Question", ""),
+            "answer": bm25_corpus[i].get("Answer", ""),
+            "score": scores[i]
+        }
         for i in top_n
     ]
 
+
 def retrieve_hybrid(query: str, top_k: int, method: str) -> List[Dict]:
+    """
+    Select retrieval method based on configuration:
+    - semantic: Only semantic search.
+    - bm25: Only keyword search.
+    - hybrid: Combine both results.
+
+    Args:
+        query (str): User question.
+        top_k (int): Number of results to retrieve per method.
+        method (str): Retrieval strategy to use.
+
+    Returns:
+        List[Dict]: Combined or filtered retrieval results.
+    """
     if method == "semantic":
         return retrieve_semantic(query, top_k)
     elif method == "bm25":
         return retrieve_bm25(query, top_k)
     else:
+        # Hybrid combines both keyword and semantic results
         return retrieve_bm25(query, top_k) + retrieve_semantic(query, top_k)
 
 # =====================================================
@@ -100,8 +147,16 @@ def retrieve_hybrid(query: str, top_k: int, method: str) -> List[Dict]:
 
 def rerank_results(query: str, results: List[Dict], top_k: int) -> List[Dict]:
     """
-    Simple token-overlap-based reranker (Jaccard similarity).
-    Can be extended to use CrossEncoder for better scoring.
+    Re-rank retrieval results using a simple Jaccard similarity
+    between query tokens and FAQ question tokens.
+
+    Args:
+        query (str): User's original query.
+        results (List[Dict]): Retrieved FAQ items.
+        top_k (int): Number of top items to return after reranking.
+
+    Returns:
+        List[Dict]: Reranked list of FAQ items.
     """
     query_tokens = set(query.lower().split())
     for r in results:
@@ -114,6 +169,22 @@ def rerank_results(query: str, results: List[Dict], top_k: int) -> List[Dict]:
 # =====================================================
 
 def generate_answer(question: str, retrieval_mode: str = None) -> str:
+    """
+    Generate a final natural language answer for the user question.
+
+    Steps:
+        1. Retrieve FAQs using specified retrieval mode.
+        2. Rerank the results for highest relevance.
+        3. Construct context block for the LLM.
+        4. Generate final answer using Hugging Face model.
+
+    Args:
+        question (str): User's question.
+        retrieval_mode (str, optional): Retrieval method ('bm25', 'semantic', or 'hybrid').
+
+    Returns:
+        str: Generated answer.
+    """
     top_k = retriever_cfg.get("top_k", 3)
     retrieval_mode = retrieval_mode or retriever_cfg["default_mode"]
 
@@ -123,12 +194,12 @@ def generate_answer(question: str, retrieval_mode: str = None) -> str:
     # Step 2: Rerank
     reranked = rerank_results(question, retrieved, top_k=top_k)
 
-    # Step 3: Format context
+    # Step 3: Format context for prompt
     context_block = "\n\n".join(
         f"Q: {item['question']}\nA: {item['answer']}" for item in reranked
     )
 
-    # Step 4: Prepare prompt
+    # Step 4: Prepare prompt for LLM
     prompt = prompt_template.format(context=context_block, question=question)
 
     # Step 5: Generate answer using LLM
@@ -140,42 +211,5 @@ def generate_answer(question: str, retrieval_mode: str = None) -> str:
         pad_token_id=generator.tokenizer.eos_token_id
     )
 
+    # Extract answer text and remove the original prompt from it
     return response[0]["generated_text"].replace(prompt, "").strip()
-
-
-# --- Compact helper for API/UI: answer + retrieved context ---
-def generate_with_context(question: str, retrieval_mode: str | None = None, top_k: int | None = None):
-    """
-    Returns both the generated answer and the top retrieved FAQ snippets.
-    This keeps the API/UI aligned with the assignment brief.
-    """
-    top_k = top_k or retriever_cfg.get("top_k", 3)
-    retrieval_mode = retrieval_mode or retriever_cfg["default_mode"]
-
-    # Retrieve + rerank (reuse existing functions)
-    retrieved = retrieve_hybrid(question, top_k=top_k, method=retrieval_mode)
-    reranked = rerank_results(question, retrieved, top_k=top_k)
-
-    # Prepare context for the LLM
-    context_block = "\n\n".join(
-        f"Q: {item['question']}\nA: {item['answer']}" for item in reranked
-    )
-    prompt = prompt_template.format(context=context_block, question=question)
-
-    # Generate with explicit pad_token_id to avoid warning
-    response = generator(
-        prompt,
-        max_new_tokens=llm_cfg["max_tokens"],
-        temperature=llm_cfg["temperature"],
-        do_sample=True,
-        pad_token_id=generator.tokenizer.eos_token_id,
-    )
-    answer = response[0]["generated_text"].replace(prompt, "").strip()
-
-    # Return compact context list for UI
-    contexts = [
-        {"question": item["question"], "answer": item["answer"], "category": item.get("category", "")}
-        for item in reranked
-    ]
-    return {"answer": answer, "contexts": contexts}
-

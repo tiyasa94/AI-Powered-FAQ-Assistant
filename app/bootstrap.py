@@ -1,40 +1,60 @@
 """
 bootstrap.py
-Standalone script to run static data preparation:
-1. Preprocess raw CSV into clean processed CSV
-2. Build BM25 index
-3. Populate Chroma vector database
+
+This standalone script runs static data preparation for the FAQ Assistant project.
+It performs the following steps sequentially:
+1. Preprocess the raw FAQ CSV file into a clean, processed CSV file.
+2. Build a BM25 index for keyword-based search.
+3. Populate a Chroma vector database with embeddings for semantic search.
+
+Usage:
+    python app/bootstrap.py
 """
 
 import os
 import logging
 import pathlib
 import chromadb
-
 import sys
-import os
+
+# Add project root to sys.path for backend imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from backend.document_loader import preprocess_dataframe, save_data
 from backend.vector_store import embed_and_store
 from backend.store_index_bm25 import build_bm25_index
 
-# ---- Logging ----
+# ---- Logging Setup ----
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("bootstrap")
 
-# ---- Paths ----
-RAW_CSV = "data/raw/faqs.csv"
-PROCESSED_CSV = "data/processed/processed_faqs.csv"
-CHROMA_DB_PATH = "data/vectordb/chroma"
-CHROMA_COLLECTION = "hr_policy_qa"
-BM25_INDEX_PATH = "data/indexes/bm25_index.pkl"
+# ---- File and Directory Paths ----
+RAW_CSV = "data/raw/faqs.csv"  # Path to the raw FAQ dataset
+PROCESSED_CSV = "data/processed/processed_faqs.csv"  # Cleaned dataset
+CHROMA_DB_PATH = "data/vectordb/chroma"  # Persistent ChromaDB storage path
+CHROMA_COLLECTION = "hr_policy_qa"  # Chroma collection name
+BM25_INDEX_PATH = "data/indexes/bm25_index.pkl"  # BM25 index pickle file path
 
-# ---- Helpers ----
+
+# ---- Helper Functions ----
 def _file_exists(path: str) -> bool:
+    """
+    Check if a file exists at the given path.
+
+    Args:
+        path (str): Path to the file.
+
+    Returns:
+        bool: True if the file exists, False otherwise.
+    """
     return pathlib.Path(path).exists()
 
+
 def _ensure_dirs():
+    """
+    Ensure that all necessary directories exist.
+    Creates them if they do not already exist.
+    """
     for p in [
         os.path.dirname(PROCESSED_CSV),
         os.path.dirname(BM25_INDEX_PATH),
@@ -43,16 +63,39 @@ def _ensure_dirs():
         if p and not os.path.isdir(p):
             os.makedirs(p, exist_ok=True)
 
+
 def _chroma_has_data(client: chromadb.Client, collection_name: str) -> bool:
+    """
+    Check if the specified ChromaDB collection already contains data.
+
+    Args:
+        client (chromadb.Client): ChromaDB client instance.
+        collection_name (str): Name of the Chroma collection to check.
+
+    Returns:
+        bool: True if the collection has data, False otherwise.
+    """
     try:
         col = client.get_or_create_collection(collection_name)
         return (col.count() or 0) > 0
     except Exception:
         return False
 
-# ---- Main Bootstrap Steps ----
+
+# ---- Main Bootstrap Workflow ----
 def run_bootstrap():
+    """
+    Run the complete bootstrap workflow:
+    1. Preprocess raw CSV into a cleaned, structured format.
+    2. Build and save a BM25 index for keyword search.
+    3. Populate the Chroma vector database with embeddings for semantic search.
+
+    Raises:
+        FileNotFoundError: If the raw CSV file does not exist.
+    """
     log.info("=== Running static bootstrap steps ===")
+
+    # Ensure all necessary directories exist
     _ensure_dirs()
 
     # Step 1: Preprocess CSV
@@ -85,6 +128,7 @@ def run_bootstrap():
 
     log.info("=== Bootstrap complete! ===")
 
-# ---- Run from CLI ----
+
+# ---- CLI Entrypoint ----
 if __name__ == "__main__":
     run_bootstrap()

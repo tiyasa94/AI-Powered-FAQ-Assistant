@@ -75,7 +75,7 @@ Make sure you have Python 3.9+ installed, then:
 pip install -r requirements.txt
 ```
 
-## **4. Environment Variables**
+### **4. Environment Variables**
 
 Create a .env file in the project root:
 
@@ -110,7 +110,7 @@ Populating ChromaDB collection -> hr_policy_qa
 
 ---
 
-**Run the Application**
+## **Run the Application**
 1. Start the Backend
 
 Launch the FastAPI backend server:

@@ -75,7 +75,17 @@ Make sure you have Python 3.9+ installed, then:
 pip install -r requirements.txt
 ```
 
-**Data Preparation**
+## **4. Environment Variables**
+
+Create a .env file in the project root:
+
+```bash
+HUGGINGFACEHUB_API_TOKEN=<your_huggingface_api_token>
+```
+
+---
+
+## **Data Preparation**
 
 The assistant uses a preloaded FAQ dataset (data/raw/faqs.csv).
 Run the bootstrap script to:
@@ -88,13 +98,17 @@ Run the bootstrap script to:
 python app/bootstrap.py
 ```
 
-**Expected output:**
+---
+
+## **Expected output:**
 ```bash
 Preprocessing raw CSV -> data/processed/processed_faqs.csv
 Building BM25 index -> data/indexes/bm25_index.pkl
 Populating ChromaDB collection -> hr_policy_qa
 === Bootstrap complete! ===
 ```
+
+---
 
 **Run the Application**
 1. Start the Backend
@@ -113,32 +127,9 @@ streamlit run app/ui.py
 ```
 This will open the Streamlit interface in your default browser.
 
-💻 Usage
+---
 
-Choose from Quick Suggestion buttons or type a custom question.
-
-The backend:
-
-* Retrieves the top matching FAQs (BM25 + semantic search).
-
-* Builds a contextual prompt for the LLM.
-
-* Streams the generated response back to the UI.
-
-* View results in real-time with session history maintained.
-
-📝 Example Questions
-
-* "How do I download my payslip?"
-
-* "What is the notice period for resignation?"
-
-* "Are there any educational allowances?"
-
-* "What documents are needed for reimbursement?"
-
-
-**Requirements**
+## **Requirements**
 
 Key dependencies included in requirements.txt:
 ```bash
@@ -169,7 +160,9 @@ Install them all using:
 pip install -r requirements.txt
 ```
 
-**API Endpoints**
+---
+
+## **API Endpoints**
 
 | Method | Endpoint      | Description                |
 | ------ | ------------- | -------------------------- |
@@ -177,15 +170,40 @@ pip install -r requirements.txt
 | `POST` | `/ask/stream` | Streaming tokenized answer |
 
 
-**Environment Variables**
+---
 
-Create a .env file in the project root:
+## **Usage**
 
-```bash
-HUGGINGFACEHUB_API_TOKEN=<your_huggingface_api_token>
-```
+Choose from Quick Suggestion buttons or type a custom question.
 
-**Future Improvements**
+The backend:
+
+* Retrieves the top matching FAQs (BM25 + semantic search).
+
+* Builds a contextual prompt for the LLM.
+
+* Streams the generated response back to the UI.
+
+* View results in real-time with session history maintained.
+
+---
+
+## **Example Questions**
+
+* "How do I download my payslip?"
+
+* "What is the notice period for resignation?"
+
+* "Are there any educational allowances?"
+
+* "What documents are needed for reimbursement?"
+
+---
+
+
+
+
+## **Future Improvements**
 
 Add multilingual FAQ support.
 
